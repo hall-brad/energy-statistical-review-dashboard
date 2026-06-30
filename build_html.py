@@ -545,23 +545,28 @@ function renderRaw(s,main){
 }
 
 /* ---------- COUNTRY PROFILE ---------- */
-function allEntities(){
-  const set=new Map();
-  ORDER.forEach(n=>{const s=SHEETS[n]; if(s.type==='timeseries') s.entities.forEach(e=>set.set(e.name,(set.get(e.name)||0)+1));});
-  return [...set.entries()].sort((a,b)=>b[1]-a[1]).map(x=>x[0]);
-}
+const PROFILE = DB.profile || {regions:[],countries:[]};
+const PROF_LABEL = {};
+PROFILE.countries.concat(PROFILE.regions).forEach(it=>PROF_LABEL[it.value]=it.label);
 let PROF={ent:null};
 function renderProfile(){
   const main=$('#main'); main.innerHTML='';
-  const ents=allEntities();
-  if(!PROF.ent) PROF.ent = ents.includes('US')?'US':ents[0];
+  if(!PROF.ent) PROF.ent = PROF_LABEL['US'] ? 'US' : (PROFILE.countries[0]||PROFILE.regions[0]||{}).value;
   const head=el('div','profhead');
   const c=el('div','ctl'); c.innerHTML='<label>Country / region</label>';
-  const sel=el('select'); sel.style.minWidth='240px';
-  ents.forEach(n=>{const o=el('option',null,n);o.value=n;sel.appendChild(o);});
+  const sel=el('select'); sel.style.minWidth='260px';
+  function addGroup(label,items){
+    if(!items||!items.length)return;
+    const og=document.createElement('optgroup'); og.label=label;
+    items.forEach(it=>{const o=el('option',null,escapeHtml(it.label)); o.value=it.value; og.appendChild(o);});
+    sel.appendChild(og);
+  }
+  addGroup('Countries', PROFILE.countries);
+  addGroup('Regions & groups', PROFILE.regions);
   sel.value=PROF.ent; sel.onchange=()=>{PROF.ent=sel.value;renderProfile();}; c.appendChild(sel);
   head.appendChild(c);
-  const h=el('div'); h.innerHTML=`<h1 style="margin:0">${escapeHtml(PROF.ent)}</h1><div class="hint">Latest available value across every time-series table that includes this entity. Click any card to open its full chart.</div>`;
+  const disp=PROF_LABEL[PROF.ent]||PROF.ent;
+  const h=el('div'); h.innerHTML=`<h1 style="margin:0">${escapeHtml(disp)}</h1><div class="hint">Latest available value across every time-series table that includes this entity. Click any card to open its full chart.</div>`;
   head.appendChild(h);
   main.appendChild(head);
 

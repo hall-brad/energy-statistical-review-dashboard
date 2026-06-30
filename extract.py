@@ -49,18 +49,32 @@ def cell_str(v):
         return str(int(v))
     return str(v).strip()
 
+# Merge clearly-identical entities that the workbook spells differently across sheets.
+ALIASES = {
+    "United States": "US",
+    "Russia": "Russian Federation",
+    "Turkey": "Türkiye",
+    "Viet Nam": "Vietnam",
+    "Czechia": "Czech Republic",
+    "UAE": "United Arab Emirates",
+    "DR Congo": "Democratic Republic of Congo",
+    "European Union #": "European Union",
+    "Total Asia-Pacific": "Total Asia Pacific",
+}
+
 def norm_name(s):
     """Normalize an entity / series name: collapse whitespace, fix the one source typo,
-    and strip trailing footnote digits/superscripts (e.g. 'India2' -> 'India')."""
+    strip trailing footnote markers (e.g. 'India2' -> 'India', 'European Union #' -> 'European Union'),
+    and merge known duplicate spellings to a single canonical name."""
     s = re.sub(r"\s+", " ", str(s)).strip()
     s = s.replace("Russian Federationeration", "Russian Federation")
-    # strip trailing superscript footnote characters
-    s = re.sub(r"[¹²³⁰-⁹\*\^]+$", "", s).strip()
+    # strip trailing superscript / footnote markers (incl. '#')
+    s = re.sub(r"[¹²³⁰-⁹\*\^#]+$", "", s).strip()
     # strip a trailing footnote digit run if preceded by a letter (country names don't end in digits)
     m = re.match(r"^(.*[A-Za-z\)])\s?(\d{1,2})$", s)
     if m:
         s = m.group(1).strip()
-    return s
+    return ALIASES.get(s, s)
 
 AGG_PATTERNS = [
     r"^total\b", r"\btotal$", r"^of which", r"\boecd\b", r"non-oecd",
@@ -315,6 +329,72 @@ for name in order:
     cats.setdefault(c, []).append(name)
 categories = [{"name": c, "sheets": cats[c]} for c in CATEGORY_ORDER if c in cats]
 
+# ---------- curated entity list for the Country Profile picker ----------
+def build_profile(sheets):
+    import unicodedata
+    names = set()
+    for s in sheets.values():
+        if s["type"] == "timeseries":
+            for e in s["entities"]:
+                names.add(e["name"])
+
+    # Major regions / groups worth profiling: (canonical entity name, friendly label)
+    REGION_MAP = [
+        ("Total World", "World"),
+        ("of which: OECD", "OECD"),
+        ("Non-OECD", "Non-OECD"),
+        ("OPEC", "OPEC"),
+        ("Non-OPEC", "Non-OPEC"),
+        ("European Union", "European Union"),
+        ("Total North America", "North America"),
+        ("Total S. & Cent. America", "S. & Cent. America"),
+        ("Total Europe", "Europe"),
+        ("Total CIS", "CIS"),
+        ("Total Middle East", "Middle East"),
+        ("Total Africa", "Africa"),
+        ("Total Asia Pacific", "Asia Pacific"),
+    ]
+    regions = [{"value": v, "label": lab} for v, lab in REGION_MAP if v in names]
+
+    # things that are NOT a geography (trade flows, oil products, tech/meter labels, footnotes)
+    JUNK_TOKENS = re.compile(
+        r"import|export|\btrade\b|pipeline|distillate|naphtha|gasoline|kerosene|"
+        r"diesel|gasoil|ethane|\blpg\b|behind-the-meter|front-of-the-meter", re.I)
+    JUNK_EXACT = {"Others", "Other", "Blue", "Green", "Fuel oil",
+                  "Light distillates", "Middle distillates",
+                  "Behind-the-meter", "Front-of-the-meter"}
+    # bare regions / sub-regions that aren't countries (and aren't in the curated region group)
+    REGION_DROP = {
+        "Europe", "Africa", "Asia Pacific", "Middle East", "CIS", "World",
+        "North Africa", "West Africa", "Central America", "Eastern Africa",
+        "Middle Africa", "Western Africa", "Northern Africa", "Southern Africa",
+        "Canada & Mexico", "Asia Pacific (ex Japan)", "Middle East (ex Saudi Arabia)",
+        "S. & Cent. America", "OECD Asia", "Non-OECD", "OPEC", "Non-OPEC",
+        "European Union", "of which: OECD",
+    }
+
+    def is_country(n):
+        if ":" in n or n.startswith("Source"):
+            return False
+        if n in JUNK_EXACT or JUNK_TOKENS.search(n):
+            return False
+        if n.startswith(("Total ", "Other ", "Rest of")):
+            return False
+        if n in REGION_DROP:
+            return False
+        return True
+
+    def sortkey(n):
+        k = unicodedata.normalize("NFKD", n).encode("ascii", "ignore").decode().lower()
+        if k.startswith("the "):
+            k = k[4:]
+        return k
+
+    countries = sorted([n for n in names if is_country(n)], key=sortkey)
+    return {"regions": regions, "countries": [{"value": n, "label": n} for n in countries]}
+
+profile = build_profile(sheets)
+
 data = {
     "meta": {
         "title": "Energy Institute Statistical Review of World Energy 2026",
@@ -324,6 +404,7 @@ data = {
     "categories": categories,
     "order": order,
     "sheets": sheets,
+    "profile": profile,
 }
 
 with open(OUT, "w") as f:
