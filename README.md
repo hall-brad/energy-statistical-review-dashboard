@@ -2,7 +2,9 @@
 
 An interactive, single-file HTML dashboard built from the **2026 Energy Institute Statistical Review of World Energy** "all data" workbook (97 tables: every fuel, emissions, prices, electricity, and critical minerals).
 
-Open `EI-Statistical-Review-Dashboard.html` in any browser — no server, no install, all data embedded.
+**Live site:** https://hall-brad.github.io/energy-statistical-review-dashboard/
+
+Or open `index.html` in any browser — no server, no install, all data embedded.
 
 ## What it does
 
@@ -13,11 +15,9 @@ Open `EI-Statistical-Review-Dashboard.html` in any browser — no server, no ins
 - **Country profile** — pick one country/region and see its latest value across every metric, with sparklines; click a card to jump to its full chart.
 - Light/dark toggle.
 
-## Publishing to GitHub Pages
+## Hosting
 
-1. Put `EI-Statistical-Review-Dashboard.html` in a repo and **rename it to `index.html`** (or, in the repo, Settings → Pages → set the source and point to the file).
-2. Enable GitHub Pages on the `main` branch / root.
-3. The dashboard loads Chart.js from a CDN, so it needs internet to render charts (true on GitHub Pages). All energy data is embedded in the file itself.
+This repo is published with **GitHub Pages** (Settings → Pages → Deploy from `main` / root), serving `index.html` at the live URL above. The dashboard loads Chart.js from a CDN, so it needs internet to render charts (true on GitHub Pages); all energy data is embedded in the file itself.
 
 ## Regenerating from a new edition
 
@@ -32,7 +32,7 @@ The parser auto-classifies each sheet (time series / price series / matrix-or-re
 
 | File | Purpose |
 |------|---------|
-| `EI-Statistical-Review-Dashboard.html` | The dashboard (open this) |
+| `index.html` | The dashboard (open this / served by Pages) |
 | `ei_data.json` | Extracted data (embedded in the HTML; kept separately for reference) |
 | `extract.py` | Workbook → JSON parser |
 | `build_html.py` | JSON → dashboard builder |
