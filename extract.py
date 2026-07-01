@@ -228,6 +228,12 @@ def parse_sheet(name, ws):
                 break
         year_cols = run
         years = [y for ci, y in year_cols]
+        # Guard: a "time series" with fewer than 3 real years isn't a usable chart
+        # (e.g. "Wind and Solar Technology Types" is a 2024/2025 cross-section, not a
+        # trend). Fall through to the raw/custom-layout renderer instead.
+        if len(years) < 3:
+            out["grid"] = [[cell_str(c) for c in row] for row in grid]
+            return out
         ycols = [ci for ci, y in year_cols]
         first_ycol = min(ycols)
         last_ycol = max(ycols)

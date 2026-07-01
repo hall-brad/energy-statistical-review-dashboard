@@ -106,6 +106,16 @@ table.data td.na{color:var(--muted)}
 .raw th,.raw td{border:1px solid var(--line);padding:4px 8px;font-size:12px;white-space:nowrap}
 .raw td.num{text-align:right;font-variant-numeric:tabular-nums}
 .raw tr:first-child td{font-weight:700;font-size:13px}
+/* custom-layout (raw) tables: natural column widths + horizontal scroll so nothing gets crushed */
+table.rawtbl{border-collapse:separate;border-spacing:0;width:auto;font-size:12.3px}
+table.rawtbl td,table.rawtbl th{padding:5px 12px;white-space:nowrap;border-bottom:1px solid var(--line);border-right:1px solid var(--line)}
+table.rawtbl td.num{text-align:right;font-variant-numeric:tabular-nums}
+table.rawtbl th{position:sticky;top:0;z-index:3;background:var(--panel);font-weight:700;text-align:right;border-bottom:2px solid var(--line)}
+table.rawtbl th.rh{text-align:left;left:0;z-index:4}
+table.rawtbl td.rh,table.rawtbl th.rh{position:sticky;left:0;background:var(--panel);font-weight:600;text-align:left;z-index:2;box-shadow:1px 0 0 var(--line)}
+table.rawtbl tr.tot td{font-weight:700;background:color-mix(in srgb,var(--accent) 6%,var(--panel))}
+table.rawtbl tbody tr:hover td{background:var(--chip)}
+table.rawtbl tr.blank td{height:6px;padding:0;background:var(--bg)}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(235px,1fr));gap:13px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:13px;box-shadow:var(--shadow);cursor:pointer;transition:transform .08s,border-color .08s}
 .card:hover{transform:translateY(-2px);border-color:var(--accent)}
@@ -131,6 +141,17 @@ table.data td.na{color:var(--muted)}
 }
 .menutoggle{display:none}
 @media(max-width:820px){.menutoggle{display:flex}}
+.homehero{margin:6px 0 22px;max-width:900px}
+.homehero .eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--accent);font-weight:700}
+.homehero h1{margin:4px 0 8px;font-size:30px;letter-spacing:-.4px}
+.homehero p{color:var(--muted);font-size:14px;line-height:1.6;margin:0}
+.tocgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.toccat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow)}
+.tochead{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.4px;padding-bottom:8px;margin-bottom:6px;border-bottom:1px solid var(--line)}
+.tochead .tccount{margin-left:auto;font-size:11px;color:var(--muted)}
+.toclist{display:flex;flex-direction:column}
+.toclink{padding:5px 6px;font-size:13px;color:var(--muted);border-radius:6px;cursor:pointer}
+.toclink:hover{background:var(--chip);color:var(--ink)}
 footer.attrib{padding:16px 22px;border-top:1px solid var(--line);background:var(--panel);
   color:var(--muted);font-size:11.5px;line-height:1.6}
 footer.attrib b{color:var(--ink)}
@@ -140,11 +161,12 @@ footer.attrib a{color:var(--accent2)}
 <body>
 <header>
   <button class="iconbtn menutoggle" id="menuToggle">☰</button>
-  <div class="brand">
+  <div class="brand" id="brandHome" title="Back to contents" style="cursor:pointer">
     <b>Statistical Review of World Energy</b>
     <span>Energy Institute · 2026 edition · <span id="scount"></span> tables</span>
   </div>
   <div class="modes">
+    <button class="modebtn" data-mode="home">Contents</button>
     <button class="modebtn active" data-mode="table">Tables</button>
     <button class="modebtn" data-mode="profile">Country profile</button>
   </div>
@@ -182,7 +204,7 @@ const CATCOLOR = {
 const PALETTE = ['#1f8a70','#c46a1b','#0f6e8c','#b4452f','#7a4fb0','#2e9e4f','#c0397d','#8a6d1f',
   '#3aa6c9','#e08a3c','#5a7d2a','#9b3b6a','#2a6f97','#a8521b','#46836b','#704fa0'];
 
-let MODE='table', CUR=null, SUB='compare';
+let MODE='home', CUR=null, SUB='compare', RAW_SUB='';
 const state = {}; // per-sheet view state
 
 /* ---------- helpers ---------- */
@@ -248,9 +270,37 @@ function title_of(name){
 function setMode(m){
   MODE=m;
   document.querySelectorAll('.modebtn').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
-  if(m==='profile'){ renderProfile(); } else { if(!CUR) selectSheet(firstTimeseries()); else selectSheet(CUR); }
+  if(m==='profile') renderProfile();
+  else if(m==='home') renderHome();
+  else { if(!CUR) renderHome(); else selectSheet(CUR); }
 }
 function firstTimeseries(){ return ORDER.find(n=>SHEETS[n].type!=='raw') || ORDER[0]; }
+
+/* ---------- HOME / clickable table of contents ---------- */
+function renderHome(){
+  MODE='home';
+  document.querySelectorAll('.tlink').forEach(a=>a.classList.remove('active'));
+  document.querySelectorAll('.modebtn').forEach(b=>b.classList.toggle('active',b.dataset.mode==='home'));
+  const main=$('#main'); main.innerHTML='';
+  const hero=el('div','homehero');
+  hero.innerHTML=`<div class="eyebrow">Energy Institute · 2026 edition</div>
+    <h1>Statistical Review of World Energy</h1>
+    <p>An interactive view of all <b>${DB.meta.sheetCount}</b> data tables — every fuel, emissions, prices, electricity and critical minerals, ${SHEETS['Total Energy Supply (TES) -EJ']?SHEETS['Total Energy Supply (TES) -EJ'].years[0]+'–'+SHEETS['Total Energy Supply (TES) -EJ'].years[SHEETS['Total Energy Supply (TES) -EJ'].years.length-1]:''}. Pick a table below, or use <b>Country profile</b> to see one country across every metric.</p>`;
+  main.appendChild(hero);
+  const wrap=el('div','tocgrid');
+  CATS.forEach(cat=>{
+    const box=el('div','toccat');
+    box.innerHTML=`<div class="tochead"><span class="catdot" style="background:${CATCOLOR[cat.name]||'#888'}"></span>${cat.name}<span class="tccount">${cat.sheets.length}</span></div>`;
+    const ul=el('div','toclist');
+    cat.sheets.forEach(name=>{
+      const a=el('a','toclink',escapeHtml(name));
+      a.onclick=()=>{ setModeButtons('table'); selectSheet(name); };
+      ul.appendChild(a);
+    });
+    box.appendChild(ul); wrap.appendChild(box);
+  });
+  main.appendChild(wrap);
+}
 
 /* ---------- select & render a sheet ---------- */
 function selectSheet(name){
@@ -524,24 +574,126 @@ function renderTable(s,root){
 }
 
 /* ---------- RAW grid ---------- */
+function isNum(c){ return c!==''&&c!=null&&/^-?[\d,]*\.?\d+$/.test(String(c).trim()); }
+function toNum(c){ return isNum(c)? parseFloat(String(c).replace(/,/g,'')) : null; }
+function isTotalRow(lbl){ return /^(total|of which|oecd|non-oecd|world|other |rest of)/i.test(lbl||''); }
+
+/* Interpret a custom grid as label-column + numeric columns so we can chart it. */
+function parseRaw(grid){
+  if(!grid||!grid.length) return null;
+  const maxc=Math.max(...grid.map(r=>r.length));
+  // first data row: col0 is non-numeric text and the row has >=1 numeric cell
+  let firstData=-1;
+  for(let r=1;r<grid.length;r++){
+    const l=String(grid[r][0]||'').trim();
+    const hasNum=grid[r].slice(1).some(isNum);
+    if(l && !isNum(l) && hasNum){ firstData=r; break; }
+  }
+  if(firstData<0) return null;
+  // header row = the row above firstData with the most non-empty cells
+  let hdr=firstData-1, best=-1;
+  for(let r=Math.max(0,firstData-4);r<firstData;r++){
+    const cnt=(grid[r]||[]).filter(c=>String(c||'').trim()).length;
+    if(cnt>best){best=cnt;hdr=r;}
+  }
+  // column labels (carry a block marker from rows above to disambiguate repeats, e.g. 2024/2025)
+  const cols=[];
+  for(let c=1;c<maxc;c++){
+    let lab=String((grid[hdr]||[])[c]||'').trim();
+    let marker='';
+    for(let r=0;r<hdr;r++){ const up=String((grid[r]||[])[c]||'').trim(); if(up) marker=up; }
+    const full=(marker && marker!==lab ? marker+' · ' : '')+ (lab||('Col '+c));
+    // numeric coverage
+    let n=0; for(let r=firstData;r<grid.length;r++){ if(isNum((grid[r]||[])[c])) n++; }
+    cols.push({c, label:full, numeric:n>=2});
+  }
+  const rows=[];
+  for(let r=firstData;r<grid.length;r++){
+    const lbl=String(grid[r][0]||'').trim();
+    if(!lbl && !grid[r].slice(1).some(x=>String(x||'').trim())) continue; // blank
+    rows.push({label:lbl, cells:grid[r], tot:isTotalRow(lbl)});
+  }
+  const numCols=cols.filter(c=>c.numeric);
+  return {hdr, firstData, cols, numCols, rows};
+}
+
+let RAWCHART=null;
 function renderRaw(s,main){
-  const note=el('div','hint'); note.style.margin='6px 0 12px';
-  note.innerHTML='This table has a custom layout (e.g. a trade matrix, fuel breakdown, or reference table) and is shown faithfully as in the workbook.';
-  main.appendChild(note);
-  const bar=el('div'); bar.style.cssText='margin-bottom:10px';
-  const dlb=el('button','btn','⬇ Download CSV'); bar.appendChild(dlb); main.appendChild(bar);
-  const scroll=el('div','tablescroll'); const tbl=el('table','data raw');
-  (s.grid||[]).forEach((row,ri)=>{
-    const tr=el('tr');
-    row.forEach(c=>{
-      const isnum=c!==''&&!isNaN(c)&&c!==null&&/^-?[\d.,]+$/.test(String(c));
-      const td=el(ri===0?'td':'td',isnum?'num':null,escapeHtml(c==null?'':c));
-      tr.appendChild(td);
-    });
-    tbl.appendChild(tr);
+  const P=parseRaw(s.grid);
+  const chartable = P && P.numCols.length>=1 && P.rows.length>=2;
+  // sub-tabs
+  let sub = RAW_SUB || (chartable?'chart':'table');
+  if(!chartable) sub='table';
+  const tabs=el('div','subtabs');
+  const defs = chartable ? [['chart','📊 Chart'],['table','▦ Table']] : [['table','▦ Table']];
+  defs.forEach(([k,lab])=>{
+    const b=el('button','subtab'+(k===sub?' active':''),lab);
+    b.onclick=()=>{RAW_SUB=k; selectSheet(CUR);}; tabs.appendChild(b);
   });
-  scroll.appendChild(tbl); main.appendChild(scroll);
-  dlb.onclick=()=>csvDownload((CUR.replace(/[^a-z0-9]+/gi,'_'))+'.csv', s.grid);
+  main.appendChild(tabs);
+  const body=el('div'); main.appendChild(body);
+
+  if(sub==='chart' && chartable){
+    const st=(state['_raw_'+CUR]=state['_raw_'+CUR]||{});
+    // default column: prefer one containing "Total" then latest year, else last numeric
+    if(st.col===undefined){
+      const tcol=P.numCols.find(c=>/total/i.test(c.label));
+      st.col = (tcol?tcol.c:P.numCols[P.numCols.length-1].c);
+      st.topN=15; st.incTot=false;
+    }
+    const ctr=el('div','controls');
+    const cc=el('div','ctl'); cc.innerHTML='<label>Column</label>';
+    const csel=el('select'); P.numCols.forEach(c=>{const o=el('option',null,escapeHtml(c.label));o.value=c.c;csel.appendChild(o);});
+    csel.value=st.col; csel.onchange=()=>{st.col=+csel.value;draw();}; cc.appendChild(csel);
+    const tc=el('div','ctl'); tc.innerHTML='<label>Show</label>';
+    const tsel=el('select'); [10,15,20,30,9999].forEach(n=>{const o=el('option',null,n>=9999?'All':'Top '+n);o.value=n;tsel.appendChild(o);}); tsel.value=st.topN;
+    tsel.onchange=()=>{st.topN=+tsel.value;draw();}; tc.appendChild(tsel);
+    const ac=el('div','ctl'); ac.innerHTML='<label>Totals / regions</label>';
+    const ab=el('button','btn'+(st.incTot?' primary':''),st.incTot?'Included':'Excluded');
+    ab.onclick=()=>{st.incTot=!st.incTot;ab.className='btn'+(st.incTot?' primary':'');ab.textContent=st.incTot?'Included':'Excluded';draw();}; ac.appendChild(ab);
+    ctr.append(cc,tc,ac); body.appendChild(ctr);
+    const info=el('div','hint'); info.style.margin='10px 0'; body.appendChild(info);
+    const p=el('div','panel'); const cw=el('div','rankwrap'); const cv=el('canvas'); cw.appendChild(cv); p.appendChild(cw); body.appendChild(p);
+    function draw(){
+      let rows=P.rows.map(r=>({label:r.label, v:toNum(r.cells[st.col]), tot:r.tot})).filter(r=>r.v!=null);
+      if(!st.incTot) rows=rows.filter(r=>!r.tot);
+      rows.sort((a,b)=>b.v-a.v);
+      const shown=rows.slice(0,st.topN);
+      if(RAWCHART) RAWCHART.destroy();
+      const dark=document.documentElement.getAttribute('data-theme')==='dark';
+      const grid=dark?'rgba(255,255,255,.07)':'rgba(0,0,0,.06)'; const tick=dark?'#9bada6':'#5d6b66';
+      cw.style.height=Math.max(260, shown.length*24+50)+'px';
+      const colLabel=(P.numCols.find(c=>c.c===st.col)||{}).label||'';
+      RAWCHART=new Chart(cv,{type:'bar',data:{labels:shown.map(r=>r.label),datasets:[{
+        data:shown.map(r=>r.v), backgroundColor:shown.map((r,i)=>r.tot?'#9aa7a2':PALETTE[i%PALETTE.length]), borderRadius:3}]},
+        options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
+          tooltip:{callbacks:{label:c=>`${fmt(c.parsed.x)} ${s.unit||''}`}}},
+          scales:{x:{grid:{color:grid},ticks:{color:tick,callback:v=>fmt(v)}},y:{grid:{display:false},ticks:{color:tick,font:{size:11},autoSkip:false}}}}});
+      info.innerHTML=`Charting column <b>${escapeHtml(colLabel)}</b>${s.unit?' ('+escapeHtml(s.unit)+')':''} · ${shown.length} rows`;
+    }
+    draw();
+  } else {
+    const note=el('div','hint'); note.style.margin='2px 0 10px';
+    note.innerHTML='Custom layout (trade matrix, fuel breakdown, or reference table) shown faithfully as in the workbook.';
+    body.appendChild(note);
+    const dlb=el('button','btn','⬇ Download CSV'); dlb.style.marginBottom='10px'; body.appendChild(dlb);
+    const scroll=el('div','tablescroll'); const tbl=el('table','rawtbl');
+    const hdrIdx = P ? P.hdr : 0;
+    (s.grid||[]).forEach((row,ri)=>{
+      const isBlank=!row.some(c=>String(c||'').trim());
+      const isHead = ri===hdrIdx;
+      const tr=el('tr', isBlank?'blank':((P&&ri>hdrIdx&&isTotalRow(String(row[0]||'')))?'tot':null));
+      row.forEach((c,ci)=>{
+        const tag = isHead?'th':'td';
+        const cls=[]; if(ci===0)cls.push('rh'); if(isNum(c)&&!isHead)cls.push('num');
+        tr.appendChild(el(tag,cls.join(' ')||null,escapeHtml(c==null?'':c)));
+      });
+      tbl.appendChild(tr);
+    });
+    scroll.appendChild(tbl); body.appendChild(scroll);
+    dlb.onclick=()=>csvDownload((CUR.replace(/[^a-z0-9]+/gi,'_'))+'.csv', s.grid);
+  }
+  if(s.notes&&s.notes.length){const n=el('div','note','<b>Notes:</b> '+s.notes.map(escapeHtml).join(' · '));main.appendChild(n);}
 }
 
 /* ---------- COUNTRY PROFILE ---------- */
@@ -622,12 +774,13 @@ $('#themeBtn').onclick=()=>applyTheme(document.documentElement.getAttribute('dat
 
 /* ---------- wire up ---------- */
 document.querySelectorAll('.modebtn').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
+$('#brandHome').onclick=()=>renderHome();
 $('#globalSearch').oninput=e=>buildSidebar(e.target.value);
 $('#menuToggle').onclick=()=>document.body.classList.toggle('navopen');
 $('#sidebar').addEventListener('click',()=>{if(window.innerWidth<=820)document.body.classList.remove('navopen');});
 
 buildSidebar('');
-selectSheet(firstTimeseries());
+renderHome();
 </script>
 </body>
 </html>
