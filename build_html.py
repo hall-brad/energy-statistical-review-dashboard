@@ -112,7 +112,7 @@ table.rawtbl td,table.rawtbl th{padding:5px 12px;white-space:nowrap;border-botto
 table.rawtbl td.num{text-align:right;font-variant-numeric:tabular-nums}
 table.rawtbl th{position:sticky;top:0;z-index:3;background:var(--panel);font-weight:700;text-align:right;border-bottom:2px solid var(--line)}
 table.rawtbl th.rh{text-align:left;left:0;z-index:4}
-table.rawtbl td.rh,table.rawtbl th.rh{position:sticky;left:0;background:var(--panel);font-weight:600;text-align:left;z-index:2;box-shadow:1px 0 0 var(--line)}
+table.rawtbl td.rh,table.rawtbl th.rh{position:sticky;left:0;background:var(--panel);font-weight:600;text-align:left;z-index:2;box-shadow:1px 0 0 var(--line);max-width:300px;overflow:hidden;text-overflow:ellipsis}
 table.rawtbl tr.tot td{font-weight:700;background:color-mix(in srgb,var(--accent) 6%,var(--panel))}
 table.rawtbl tbody tr:hover td{background:var(--chip)}
 table.rawtbl tr.blank td{height:6px;padding:0;background:var(--bg)}
@@ -686,7 +686,9 @@ function renderRaw(s,main){
       row.forEach((c,ci)=>{
         const tag = isHead?'th':'td';
         const cls=[]; if(ci===0)cls.push('rh'); if(isNum(c)&&!isHead)cls.push('num');
-        tr.appendChild(el(tag,cls.join(' ')||null,escapeHtml(c==null?'':c)));
+        const cell=el(tag,cls.join(' ')||null,escapeHtml(c==null?'':c));
+        if(ci===0 && c && String(c).length>36) cell.title=String(c);
+        tr.appendChild(cell);
       });
       tbl.appendChild(tr);
     });
