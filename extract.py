@@ -369,6 +369,7 @@ def build_derived(sheets):
     CO2 = grab("CO2 from Energy")[0]
     OILp = grab("Oil Production - barrels")[0]; OILcb = grab("Oil Consumption - barrels")[0]
     GASp = grab("Gas Production - Bcm")[0]; GAScb = grab("Gas Consumption - Bcm")[0]
+    COALg = grab("Coal inputs - Elec generation ")[0]; GASg = grab("Gas inputs - Elec generation")[0]
 
     def g(d, en, y):
         v = d.get(en, {}).get(y); return v if isinstance(v, (int, float)) else None
@@ -391,6 +392,22 @@ def build_derived(sheets):
         return ws / tot * 100
     mk("Wind & solar share of electricity", "Wind + solar as % of total electricity", "%",
        egY, egOrder, egAgg, ws_share)
+
+    # 2b) Nuclear / coal / gas share of electricity (fuel mix companions)
+    def fuel_share(src):
+        def f(en, y):
+            tot = g(EG, en, y)
+            if not tot: return None
+            return (g(src, en, y) or 0) / tot * 100
+        return f
+    mk("Nuclear share of electricity", "Nuclear as % of total electricity", "%",
+       egY, egOrder, egAgg, fuel_share(NUC))
+    mk("Coal share of electricity", "Coal-fired as % of total electricity", "%",
+       egY, egOrder, egAgg, fuel_share(COALg),
+       "Coal-fired generation ÷ total generation.")
+    mk("Gas share of electricity", "Gas-fired as % of total electricity", "%",
+       egY, egOrder, egAgg, fuel_share(GASg),
+       "Gas-fired generation ÷ total generation.")
 
     # 3) Electrification rate: electricity as % of primary energy
     def electrify(en, y):
