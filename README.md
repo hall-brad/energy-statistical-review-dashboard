@@ -38,3 +38,5 @@ The parser auto-classifies each sheet (time series / price series / matrix-or-re
 | `build_html.py` | JSON → dashboard builder |
 
 Source: Energy Institute, *Statistical Review of World Energy* (2026). Data © Energy Institute.
+
+<!-- redeploy trigger 2026-07-02: unstick queued Pages run -->
