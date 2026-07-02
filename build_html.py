@@ -322,7 +322,7 @@ function selectSheet(name){
   // subtabs
   const tabs=el('div','subtabs');
   const defs = s.type==='timeseries'
-    ? [['compare','📈 Compare over time'],['rank','📊 Latest-year ranking'],['table','▦ Data table']]
+    ? [['compare','📈 Compare over time'],['rank','📊 Latest-year ranking'],['decade','📊 By decade'],['table','▦ Data table']]
     : [['compare','📈 Compare over time'],['table','▦ Data table']];
   if(!defs.find(d=>d[0]===SUB)) SUB='compare';
   defs.forEach(([k,lab])=>{
@@ -334,6 +334,7 @@ function selectSheet(name){
   const body=el('div'); main.appendChild(body);
   if(SUB==='compare') renderCompare(s,body);
   else if(SUB==='rank') renderRanking(s,body);
+  else if(SUB==='decade') renderDecade(s,body);
   else renderTable(s,body);
 }
 function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -515,6 +516,87 @@ function renderRanking(s,root){
     let txt=`<b>${shown.length}</b> shown · metric: <b>${escapeHtml(st.metric==='__year'?(s.unit||'value')+' in '+st.year:st.metric)}</b>`;
     if(!pct && wv) txt+=` · World total: <b>${fmt(wv)} ${escapeHtml(s.unit||'')}</b>`;
     info.innerHTML=txt;
+  }
+  draw();
+}
+
+/* ---------- BY DECADE (decade-averaged bars) ---------- */
+function decadeBuckets(years){
+  const map={};
+  years.forEach((y,i)=>{const d=Math.floor(y/10)*10;(map[d]=map[d]||[]).push(i);});
+  return Object.keys(map).map(Number).sort((a,b)=>a-b).map(d=>{
+    const idxs=map[d]; const ys=idxs.map(i=>years[i]);
+    const full=(ys[0]%10===0)&&(ys.length>=8);
+    return {d, idxs, label: full ? d+'s' : (ys[0]+'–'+String(ys[ys.length-1]).slice(-2))};
+  });
+}
+let DCHART=null;
+function renderDecade(s,root){
+  const key=CUR; state[key]=state[key]||{};
+  const items=seriesList(s);
+  let st=state[key].decade;
+  if(!st){
+    let def;
+    if(items.find(i=>/^total world$/i.test(i.name))) def=['Total World'];
+    else if(state[key].compare&&state[key].compare.sel&&state[key].compare.sel.length) def=state[key].compare.sel.slice(0,5);
+    else def=defaultSelection(s).slice(0,4);
+    st={sel:def}; state[key].decade=st;
+  }
+  const buckets=decadeBuckets(s.years);
+  const bar=el('div','controls');
+  const opts=el('div','ctl'); opts.innerHTML='<label>Quick picks</label>';
+  const brow=el('div'); brow.style.cssText='display:flex;gap:6px;flex-wrap:wrap';
+  function preset(label,fn){const b=el('button','btn',label);b.onclick=()=>{st.sel=fn();sync();draw();};return b;}
+  if(items.find(i=>/world/i.test(i.name))) brow.appendChild(preset('World',()=>items.filter(i=>/^total world$/i.test(i.name)).map(i=>i.name)));
+  brow.appendChild(preset('Top 6',()=>{const sc=items.filter(i=>!i.agg).map(i=>{const li=latestIdx(i.values);return{n:i.name,v:li>=0?Math.abs(i.values[li]):-1};});sc.sort((a,b)=>b.v-a.v);return sc.slice(0,6).map(i=>i.n);}));
+  if(s.type==='timeseries') brow.appendChild(preset('Regions',()=>items.filter(i=>i.agg&&/^total /i.test(i.name)).map(i=>i.name)));
+  brow.appendChild(preset('Clear',()=>[]));
+  opts.appendChild(brow); bar.appendChild(opts);
+  const hint=el('div','hint'); hint.style.marginLeft='auto'; hint.style.alignSelf='flex-end';
+  hint.textContent='Each bar = average of that decade’s annual values';
+  bar.appendChild(hint);
+  root.appendChild(bar);
+
+  const grid=el('div'); grid.style.cssText='display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;align-items:flex-start';
+  const left=el('div','panel'); left.style.cssText='flex:0 0 240px;max-width:260px';
+  left.innerHTML='<div class="pickbar"><input type="text" id="decSearch" placeholder="Filter…"></div>';
+  const picker=el('div','entpicker'); left.appendChild(picker);
+  const right=el('div','panel'); right.style.cssText='flex:1;min-width:340px';
+  const cw=el('div','chartwrap'); const cv=el('canvas'); cw.appendChild(cv); right.appendChild(cw);
+  grid.append(left,right); root.appendChild(grid);
+
+  function buildPicker(filter){
+    picker.innerHTML=''; filter=(filter||'').toLowerCase();
+    items.forEach(i=>{
+      if(filter&&!i.name.toLowerCase().includes(filter))return;
+      const row=el('div','row'+(i.agg?' agg':''));
+      const id='d_'+Math.random().toString(36).slice(2);
+      const cb=el('input');cb.type='checkbox';cb.id=id;cb.checked=st.sel.includes(i.name);
+      cb.onchange=()=>{ if(cb.checked){if(!st.sel.includes(i.name))st.sel.push(i.name);}else{st.sel=st.sel.filter(x=>x!==i.name);} draw(); };
+      const lb=el('label',null,i.name);lb.htmlFor=id;lb.style.cursor='pointer';
+      row.append(cb,lb);picker.appendChild(row);
+    });
+  }
+  function sync(){ buildPicker($('#decSearch').value); }
+  buildPicker(''); $('#decSearch').oninput=e=>buildPicker(e.target.value);
+
+  function draw(){
+    const chosen=items.filter(i=>st.sel.includes(i.name));
+    if(DCHART){DCHART.destroy();DCHART=null;}
+    const dsets=chosen.map((it,idx)=>({
+      label:it.name,
+      data:buckets.map(b=>{const vs=b.idxs.map(i=>it.values[i]).filter(v=>v!=null);return vs.length?vs.reduce((a,c)=>a+c,0)/vs.length:null;}),
+      backgroundColor:PALETTE[idx%PALETTE.length], borderRadius:3, maxBarThickness:54
+    }));
+    const dark=document.documentElement.getAttribute('data-theme')==='dark';
+    const gc=dark?'rgba(255,255,255,.07)':'rgba(0,0,0,.06)'; const tick=dark?'#9bada6':'#5d6b66';
+    DCHART=new Chart(cv,{type:'bar',data:{labels:buckets.map(b=>b.label),datasets:dsets},options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:chosen.length>1,position:'bottom',labels:{color:tick,boxWidth:12,font:{size:11}}},
+        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${fmt(c.parsed.y)} ${s.unit||''}`}}},
+      scales:{x:{grid:{display:false},ticks:{color:tick}},
+        y:{grid:{color:gc},ticks:{color:tick},title:{display:!!s.unit,text:s.unit,color:tick}}}
+    }});
   }
   draw();
 }
