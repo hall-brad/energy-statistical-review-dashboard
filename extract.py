@@ -120,7 +120,7 @@ def categorize(name):
         return "Overview"
     return "Other"
 
-CATEGORY_ORDER = ["Overview", "Carbon & Emissions", "Oil", "Natural Gas", "Coal",
+CATEGORY_ORDER = ["Derived & ratios", "Overview", "Carbon & Emissions", "Oil", "Natural Gas", "Coal",
                   "Nuclear", "Hydro", "Renewables", "Electricity", "Storage & Demand",
                   "Critical Minerals", "Other", "Reference"]
 
@@ -327,6 +327,152 @@ for name in wb.sheetnames:
                   "grid": [[cell_str(c) for c in row] for row in load_grid(ws)], "error": str(e)}
     sheets[name] = parsed
     order.append(name)
+
+# ---------- DERIVED & RATIOS: synthetic cross-table analyses ----------
+def build_derived(sheets):
+    def grab(name):
+        """sheet -> (dict ent->{year:val}, years, dict ent->agg, ordered entity list)."""
+        s = sheets[name]
+        data = {e["name"]: dict(zip(s["years"], e["values"])) for e in s["entities"]}
+        agg = {e["name"]: bool(e.get("agg")) for e in s["entities"]}
+        return data, s["years"], agg, [e["name"] for e in s["entities"]]
+
+    out = {}
+    def mk(name, title, unit, years, ref_order, ref_agg, compute, note=""):
+        ents = []
+        for en in ref_order:
+            vals = []
+            has = False
+            for y in years:
+                v = compute(en, y)
+                if v is not None and not (isinstance(v, float) and (v != v)):
+                    v = round(v, 3); has = True
+                else:
+                    v = None
+                vals.append(v)
+            if has:
+                e = {"name": en, "values": vals}
+                if ref_agg.get(en):
+                    e["agg"] = True
+                ents.append(e)
+        out[name] = {"name": name, "category": "Derived & ratios", "title": title,
+                     "unit": unit, "type": "timeseries", "years": list(years),
+                     "entities": ents, "extraCols": [], "notes": [note] if note else []}
+
+    EG, egY, egAgg, egOrder = grab("Electricity Generation - TWh")
+    NUC = grab("Nuclear Generation - TWh")[0]; HYD = grab("Hydro Generation - TWh")[0]
+    SOL = grab("Solar Generation - TWh")[0]; WND = grab("Wind Generation - TWh")[0]
+    GEO = grab("Geo Biomass Other - TWh")[0]
+    TES, tesY, tesAgg, tesOrder = grab("Total Energy Supply (TES) -EJ")
+    PC = grab("TES per Capita")[0]
+    OILc = grab("Oil Consumption - EJ")[0]; GASc = grab("Gas Consumption - EJ")[0]; COALc = grab("Coal Consumption - EJ")[0]
+    CO2 = grab("CO2 from Energy")[0]
+    OILp = grab("Oil Production - barrels")[0]; OILcb = grab("Oil Consumption - barrels")[0]
+    GASp = grab("Gas Production - Bcm")[0]; GAScb = grab("Gas Consumption - Bcm")[0]
+
+    def g(d, en, y):
+        v = d.get(en, {}).get(y); return v if isinstance(v, (int, float)) else None
+
+    # 1) Clean (non-fossil) electricity share
+    def clean_share(en, y):
+        tot = g(EG, en, y)
+        if not tot: return None
+        cl = sum(x for x in (g(NUC,en,y),g(HYD,en,y),g(SOL,en,y),g(WND,en,y),g(GEO,en,y)) if x is not None)
+        return cl / tot * 100
+    mk("Clean electricity share", "Non-fossil generation as % of total electricity", "%",
+       egY, egOrder, egAgg, clean_share,
+       "Clean = nuclear + hydro + solar + wind + geo/biomass/other, divided by total generation.")
+
+    # 2) Wind + solar share of electricity
+    def ws_share(en, y):
+        tot = g(EG, en, y)
+        if not tot: return None
+        ws = sum(x for x in (g(SOL,en,y),g(WND,en,y)) if x is not None)
+        return ws / tot * 100
+    mk("Wind & solar share of electricity", "Wind + solar as % of total electricity", "%",
+       egY, egOrder, egAgg, ws_share)
+
+    # 3) Electrification rate: electricity as % of primary energy
+    def electrify(en, y):
+        tot = g(EG, en, y); tes = g(TES, en, y)
+        if not tot or not tes: return None
+        return (tot * 0.0036) / tes * 100   # TWh -> EJ
+    mk("Electrification rate", "Electricity generation as % of primary energy (input-equivalent)", "%",
+       [y for y in egY if y in tesY], egOrder, egAgg, electrify,
+       "Uses EI input-equivalent primary energy; a final-energy basis would read a few points higher.")
+
+    # 4) Fossil fuel share of primary energy
+    def fossil_share(en, y):
+        tes = g(TES, en, y)
+        if not tes: return None
+        f = sum(x for x in (g(OILc,en,y),g(GASc,en,y),g(COALc,en,y)) if x is not None)
+        return f / tes * 100
+    mk("Fossil share of primary energy", "Oil + gas + coal as % of total energy supply", "%",
+       tesY, tesOrder, tesAgg, fossil_share)
+
+    # 5) Carbon intensity of energy: CO2 / TES  (Mt/EJ == kg CO2 / GJ)
+    def carb_int(en, y):
+        co2 = g(CO2, en, y); tes = g(TES, en, y)
+        if not co2 or not tes: return None
+        return co2 / tes
+    mk("Carbon intensity of energy", "CO₂ from energy per unit of primary energy", "kg CO₂ / GJ",
+       tesY, tesOrder, tesAgg, carb_int,
+       "kg CO₂ per gigajoule (= Mt/EJ = t/TJ). Lower is cleaner energy per unit consumed.")
+
+    # 6) CO2 emissions per capita (derived population = TES / TES-per-capita)
+    def co2_pc(en, y):
+        co2 = g(CO2, en, y); tes = g(TES, en, y); pc = g(PC, en, y)
+        if not co2 or not tes or not pc: return None
+        pop = tes * 1e9 / pc                # people
+        return co2 * 1e6 / pop              # t CO2 per person
+    mk("CO₂ emissions per capita", "Energy CO₂ per person (derived population)", "t CO₂ / person",
+       tesY, tesOrder, tesAgg, co2_pc,
+       "Population derived as primary energy ÷ energy-per-capita; territorial (production) emissions.")
+
+    # 7) Oil self-sufficiency (production / consumption), barrels basis
+    def oil_ss(en, y):
+        c = g(OILcb, en, y)
+        if not c: return None
+        p = g(OILp, en, y) or 0   # absent from the producers table = ~0 production
+        return p / c * 100
+    mk("Oil self-sufficiency", "Oil production as % of consumption (>100% = net exporter)", "%",
+       grab("Oil Consumption - barrels")[1], grab("Oil Consumption - barrels")[3], grab("Oil Consumption - barrels")[2], oil_ss,
+       "Above 100% = produces more than it uses (net exporter); below = import-dependent.")
+
+    # 8) Gas self-sufficiency (production / consumption), Bcm basis
+    def gas_ss(en, y):
+        c = g(GAScb, en, y)
+        if not c: return None
+        p = g(GASp, en, y) or 0
+        return p / c * 100
+    mk("Gas self-sufficiency", "Gas production as % of consumption (>100% = net exporter)", "%",
+       grab("Gas Consumption - Bcm")[1], grab("Gas Consumption - Bcm")[3], grab("Gas Consumption - Bcm")[2], gas_ss,
+       "Above 100% = net exporter; below = import-dependent.")
+
+    # 9) Data centres as % of electricity generation (regions; special denominators for the composite rows)
+    DC, dcY, dcAgg, dcOrder = grab("Data Centre Demand")
+    def dc_share(en, y):
+        num = g(DC, en, y)
+        if num is None: return None
+        if en == "Other North America":
+            den = (g(EG,"Total North America",y) or 0) - (g(EG,"US",y) or 0)
+        elif en == "Total Middle East and Africa":
+            den = (g(EG,"Total Middle East",y) or 0) + (g(EG,"Total Africa",y) or 0)
+        elif en == "Other Asia Pacific":
+            den = (g(EG,"Total Asia Pacific",y) or 0) - (g(EG,"China",y) or 0)
+        else:
+            den = g(EG, en, y)
+        return num / den * 100 if den else None
+    mk("Data centres % of electricity", "Data-centre demand as % of regional electricity generation", "%",
+       dcY, dcOrder, dcAgg, dc_share,
+       "Denominator is electricity generation (proxy for consumption). Composite regions use summed/derived denominators.")
+
+    return out
+
+derived = build_derived(sheets)
+for nm, obj in derived.items():
+    sheets[nm] = obj
+    order.append(nm)
 
 # group categories in order
 cats = {}

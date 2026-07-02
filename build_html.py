@@ -197,6 +197,7 @@ const SHEETS = DB.sheets, ORDER = DB.order, CATS = DB.categories;
 document.getElementById('scount').textContent = DB.meta.sheetCount;
 
 const CATCOLOR = {
+  'Derived & ratios':'#6a5acd',
   'Overview':'#1f8a70','Carbon & Emissions':'#b4452f','Oil':'#6b5b3e','Natural Gas':'#0f6e8c',
   'Coal':'#444','Nuclear':'#7a4fb0','Hydro':'#2a7fc0','Renewables':'#2e9e4f',
   'Electricity':'#c46a1b','Storage & Demand':'#c0397d','Critical Minerals':'#8a6d1f','Reference':'#777'
